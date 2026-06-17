@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileSpreadsheet,
@@ -27,6 +27,70 @@ import { parseUploadedExcel, generateFilteredReport } from './utils/excelProcess
 
 // Brand navy used across header / buttons / table headers
 const NAVY = "#1B365D";
+
+/**
+ * Province picker that combines free typing with a suggestion list.
+ * Unlike a native <datalist>, focusing the field shows ALL options from the
+ * uploaded file at once (not filtered by the current value), and typing any
+ * province name is allowed.
+ */
+function ProvinceCombobox({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  options: string[];
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside the component
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // While typing -> filter by query; on fresh focus (query empty) -> show all
+  const filtered = query.trim()
+    ? options.filter(o => o.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
+  return (
+    <div className="relative" ref={ref}>
+      <input
+        type="text"
+        value={value}
+        onFocus={() => { setQuery(''); setOpen(true); }}
+        onChange={(e) => { onChange(e.target.value); setQuery(e.target.value); setOpen(true); }}
+        className={className}
+        placeholder="พิมพ์/เลือกจังหวัด"
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-30 mt-1 w-full max-h-44 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg py-1 text-xs">
+          {filtered.map(o => (
+            <li
+              key={o}
+              // onMouseDown fires before the input blur so the click registers
+              onMouseDown={() => { onChange(o); setOpen(false); }}
+              className={`px-3 py-1.5 cursor-pointer hover:bg-blue-50 ${o === value ? 'bg-blue-50 text-[#1B365D] font-semibold' : 'text-slate-600'}`}
+            >
+              {o}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function App() {
   // --- STATE ---
@@ -73,6 +137,13 @@ export default function App() {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'th'));
   }, [records]);
+
+  // Suggestions for the "add new row" province field: provinces found in the
+  // uploaded data first, then the common defaults — deduplicated.
+  const provinceSuggestions = useMemo(() => {
+    const defaults = ["พิษณุโลก", "สุโขทัย", "กรุงเทพมหานคร", "เชียงใหม่"];
+    return Array.from(new Set([...allProvincesInDataset, ...defaults]));
+  }, [allProvincesInDataset]);
 
   // --- ACTIONS ---
 
@@ -993,19 +1064,15 @@ export default function App() {
 
                       <form onSubmit={handleAddNewRow} className="grid grid-cols-1 sm:grid-cols-6 gap-3">
 
-                        {/* Prov selection */}
+                        {/* Prov selection: free text + suggestions from uploaded data */}
                         <div className="col-span-1">
                           <label className="block text-[10px] text-slate-500 font-medium mb-1">จังหวัด</label>
-                          <select
+                          <ProvinceCombobox
                             value={newRow.province}
-                            onChange={(e) => setNewRow(p => ({ ...p, province: e.target.value }))}
+                            onChange={(val) => setNewRow(p => ({ ...p, province: val }))}
+                            options={provinceSuggestions}
                             className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-[#1B365D] font-medium focus:outline-none focus:border-[#1B365D]"
-                          >
-                            <option value="พิษณุโลก">พิษณุโลก</option>
-                            <option value="สุโขทัย">สุโขทัย</option>
-                            <option value="กรุงเทพมหานคร">กรุงเทพฯ</option>
-                            <option value="เชียงใหม่">เชียงใหม่</option>
-                          </select>
+                          />
                         </div>
 
                         {/* Store name */}
