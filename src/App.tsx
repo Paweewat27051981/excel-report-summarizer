@@ -111,7 +111,7 @@ export default function App() {
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>({
     type: 'info',
-    message: 'ยินดีต้อนรับครับพี่! กรุณาอัปโหลดไฟล์ Excel ปลายทาง (เช่นไฟล์ 15-6.xlsx) ทางซ้ายมือเพื่อเริ่มดึงข้อมูลและสรุปยอดรวมย่อยอัตโนมัติทันทีครับ'
+    message: 'กรุณาอัปโหลดไฟล์ Excel ปลายทาง (ชนิดไฟล์ xlsx) ทางซ้ายมือเพื่อเริ่มดึงข้อมูลและสรุปยอดรวมย่อยอัตโนมัติทันที'
   });
 
   // For adding new row in the editor
@@ -538,8 +538,8 @@ export default function App() {
       {/* SYSTEM FEEDBACK NOTIFICATION BAR */}
       {feedback && (
         <div className={`border-b py-3 px-4 ${feedback.type === 'error' ? 'bg-rose-50 border-rose-100'
-            : feedback.type === 'success' ? 'bg-emerald-50 border-emerald-100'
-              : 'bg-sky-50 border-sky-100'
+          : feedback.type === 'success' ? 'bg-emerald-50 border-emerald-100'
+            : 'bg-sky-50 border-sky-100'
           }`}>
           <div className="max-w-7xl mx-auto flex items-start gap-3">
             {feedback.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" id="feedback-success" />}
