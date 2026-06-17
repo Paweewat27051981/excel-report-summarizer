@@ -1,0 +1,6 @@
+{
+  "name": "ระบบแปลงรายงานและสรุปยอดสินค้าแยกรายร้านค้า",
+  "description": "เครื่องมือช่วยดึงข้อมูล ประมวลผล และสร้างรายงานสรุปยอดสินค้าแยกรายร้านค้าพร้อม Subtotal สำหรับจังหวัดพิษณุโลกและสุโขทัย",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
