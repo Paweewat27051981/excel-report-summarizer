@@ -537,11 +537,10 @@ export default function App() {
 
       {/* SYSTEM FEEDBACK NOTIFICATION BAR */}
       {feedback && (
-        <div className={`border-b py-3 px-4 ${
-          feedback.type === 'error' ? 'bg-rose-50 border-rose-100'
+        <div className={`border-b py-3 px-4 ${feedback.type === 'error' ? 'bg-rose-50 border-rose-100'
             : feedback.type === 'success' ? 'bg-emerald-50 border-emerald-100'
-            : 'bg-sky-50 border-sky-100'
-        }`}>
+              : 'bg-sky-50 border-sky-100'
+          }`}>
           <div className="max-w-7xl mx-auto flex items-start gap-3">
             {feedback.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" id="feedback-success" />}
             {feedback.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" id="feedback-error" />}
@@ -640,7 +639,7 @@ export default function App() {
               <span className="font-semibold text-slate-700 flex items-center gap-1 mb-1">
                 <Info className="w-3.5 h-3.5 text-[#1B365D]" /> คำชี้แจงโครงสร้างไฟล์:
               </span>
-              โปรแกรมจะอ่านข้อมูลแผ่นงานแรก เริ่มถอดแถวข้อมูลตั้งแต่แถวที่ 2 เป็นต้นไป (โดยถือว่าแถวที่ 1 เป็นส่วนหัวรายงานของพี่)
+              โปรแกรมจะอ่านข้อมูลแผ่นงานแรก เริ่มถอดแถวข้อมูลตั้งแต่แถวที่ 2 เป็นต้นไป (โดยถือว่าแถวที่ 1 เป็นส่วนหัวรายงาน)
             </div>
 
           </div>
