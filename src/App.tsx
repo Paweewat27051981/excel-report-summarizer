@@ -114,6 +114,54 @@ export default function App() {
     }
   };
 
+  // Handle Drag Over
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Handle Drop
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    // Re-use logic from handleFileUpload but for a direct File object
+    setIsProcessing(true);
+    setFeedback({ type: 'info', message: 'กำลังอ่านโครงสร้างไฟล์จากการลากวางโปรดรอสักครู่...' });
+
+    try {
+      const provincesSet = new Set<string>();
+      const result = await parseUploadedExcel(file, columnMapping, provincesSet);
+
+      if (result.records.length === 0) {
+        setFeedback({
+          type: 'error',
+          message: '❌ ไม่พบข้อมูลใด ๆ ในไฟล์จากการลากวางครับ ลองตรวจสอบ Column Mapping'
+        });
+      } else {
+        setRecords(result.records);
+        const foundProvs = result.allProvinces;
+        const defaultSelected = foundProvs.filter(p => ["พิษณุโลก", "สุโขทัย"].includes(p));
+        setSelectedProvinces(defaultSelected.length > 0 ? defaultSelected : foundProvs.slice(0, 3));
+        setFeedback({
+          type: 'success',
+          message: `✔️ ลากวางไฟล์เสร็จสิ้น! โหลดข้อมูลสำเร็จ ${result.records.length} แถว`
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: err.message || 'เกิดข้อผิดพลาดในการลากวางไฟล์ Excel'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Trigger Excel file generation mimicking python script exactly
   const handleExportExcel = async () => {
     setIsProcessing(true);
@@ -490,7 +538,9 @@ export default function App() {
 
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-800 hover:border-slate-700 bg-slate-900/50 hover:bg-slate-900 p-6 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              className="border-2 border-dashed border-slate-800 hover:border-slate-700 hover:bg-slate-900/80 bg-slate-900/50 p-6 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
             >
               <input
                 type="file"
@@ -631,8 +681,8 @@ export default function App() {
                     <label
                       key={prov}
                       className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-all ${isChecked
-                          ? 'bg-slate-900 border-slate-700 text-yellow-400'
-                          : 'bg-slate-950/60 border-slate-850 text-slate-400 hover:border-slate-800'
+                        ? 'bg-slate-900 border-slate-700 text-yellow-400'
+                        : 'bg-slate-950/60 border-slate-850 text-slate-400 hover:border-slate-800'
                         }`}
                     >
                       <div className="flex items-center gap-2.5">
@@ -694,8 +744,8 @@ export default function App() {
                   type="button"
                   onClick={() => setActiveTab('preview')}
                   className={`px-4 py-2.5 text-xs font-bold transition-all relative flex items-center gap-2 cursor-pointer ${activeTab === 'preview'
-                      ? 'text-yellow-400'
-                      : 'text-slate-400 hover:text-slate-200'
+                    ? 'text-yellow-400'
+                    : 'text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <Table className="w-4 h-4" />
@@ -711,8 +761,8 @@ export default function App() {
                   type="button"
                   onClick={() => setActiveTab('raw_editor')}
                   className={`px-4 py-2.5 text-xs font-bold transition-all relative flex items-center gap-2 cursor-pointer ${activeTab === 'raw_editor'
-                      ? 'text-yellow-400'
-                      : 'text-slate-400 hover:text-slate-200'
+                    ? 'text-yellow-400'
+                    : 'text-slate-400 hover:text-slate-200'
                     }`}
                 >
                   <Database className="w-4 h-4" />
