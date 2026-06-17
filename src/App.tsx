@@ -39,7 +39,8 @@ export default function App() {
     bill: "I",
     pCode: "J",
     pName: "K",
-    qty: "L"
+    qty: "L",
+    truck: "Q"
   });
 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>({
@@ -55,6 +56,7 @@ export default function App() {
     pCode: '',
     pName: '',
     qty: 0,
+    truck: '',
   });
 
   // Loading state
@@ -184,7 +186,7 @@ export default function App() {
 
       setFeedback({
         type: 'success',
-        message: '🎉 ส่งออกรายงาน Excel แบบสรุปยอดรวมย่อย (Subtotal) สไตล์พรีเมียมเรียบร้อยแล้ว!'
+        message: '🎉 ส่งออกรายงาน Excel เรียบร้อยแล้ว! ไฟล์เดียวมี 2 ชีต: "รายงานสรุปแยกจังหวัด" และ "สรุปยอดตามทะเบียนรถ" 🚚'
       });
     } catch (err: any) {
       setFeedback({
@@ -302,6 +304,7 @@ export default function App() {
       pCode: '',
       pName: '',
       qty: 0,
+      truck: '',
     });
     setFeedback({
       type: 'success',
@@ -646,8 +649,26 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3 border-t border-slate-850 pt-2.5">
+                <div>
+                  <label className="block text-xs font-semibold text-sky-400 mb-1">🚚 ทะเบียนรถ (คอลัมน์ Q)</label>
+                  <input
+                    type="text"
+                    value={columnMapping.truck}
+                    onChange={(e) => setColumnMapping(prev => ({ ...prev, truck: e.target.value.toUpperCase() }))}
+                    className="w-full bg-slate-900 border-2 border-sky-900/60 rounded px-2.5 py-1.5 text-sm text-sky-300 font-bold font-mono text-center focus:outline-none focus:border-sky-500"
+                    placeholder="Q"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <p className="text-[11px] text-slate-500 leading-tight pb-1">
+                    ใช้สร้างชีต <span className="text-sky-400 font-semibold">"สรุปยอดตามทะเบียนรถ"</span> เพิ่มในไฟล์เดียวกัน
+                  </p>
+                </div>
+              </div>
+
               <div className="bg-slate-900/50 p-2.5 rounded text-[11px] text-slate-500 text-center font-mono">
-                ค่าเริ่มต้น: F=จังหวัด | C=ร้าน | I=บิล | J=รหัส | K=สินค้า | L=จำนวน(หีบ)
+                ค่าเริ่มต้น: F=จังหวัด | C=ร้าน | I=บิล | J=รหัส | K=สินค้า | L=จำนวน(หีบ) | Q=ทะเบียนรถ
               </div>
 
             </form>
@@ -1023,8 +1044,20 @@ export default function App() {
                           />
                         </div>
 
+                        {/* Truck registration */}
+                        <div className="col-span-1">
+                          <label className="block text-[10px] text-sky-500 font-semibold mb-1">ทะเบียนรถ</label>
+                          <input
+                            type="text"
+                            value={newRow.truck}
+                            onChange={(e) => setNewRow(p => ({ ...p, truck: e.target.value }))}
+                            className="w-full bg-slate-950 border border-sky-950 rounded px-2.5 py-1 text-xs text-sky-300 placeholder-slate-600 font-mono focus:outline-none focus:border-sky-500"
+                            placeholder="1กข-1234"
+                          />
+                        </div>
+
                         {/* Product Name */}
-                        <div className="col-span-1 sm:col-span-5">
+                        <div className="col-span-1 sm:col-span-4">
                           <label className="block text-[10px] text-slate-500 font-medium mb-1">รายละเอียดสินค้า</label>
                           <input
                             type="text"
@@ -1064,11 +1097,12 @@ export default function App() {
                         <table className="w-full text-left text-xs">
                           <thead>
                             <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 font-semibold font-mono">
-                              <th className="p-2 w-[15%]">จังหวัด</th>
-                              <th className="p-2 w-[25%] border-l border-slate-850">ร้านค้าปลายทาง</th>
-                              <th className="p-2 w-[15%] border-l border-slate-850">เลขที่บิล</th>
-                              <th className="p-2 w-[13%] border-l border-slate-850">รหัส</th>
-                              <th className="p-2 w-[18%] border-l border-slate-850">สินค้า</th>
+                              <th className="p-2 w-[13%]">จังหวัด</th>
+                              <th className="p-2 w-[12%] border-l border-slate-850">ทะเบียนรถ</th>
+                              <th className="p-2 w-[21%] border-l border-slate-850">ร้านค้าปลายทาง</th>
+                              <th className="p-2 w-[13%] border-l border-slate-850">เลขที่บิล</th>
+                              <th className="p-2 w-[11%] border-l border-slate-850">รหัส</th>
+                              <th className="p-2 w-[16%] border-l border-slate-850">สินค้า</th>
                               <th className="p-2 w-[10%] text-right border-l border-slate-850">จำนวน(L)</th>
                               <th className="p-2 w-[4%] text-center">ลบ</th>
                             </tr>
@@ -1076,7 +1110,7 @@ export default function App() {
                           <tbody>
                             {records.length === 0 ? (
                               <tr>
-                                <td colSpan={7} className="text-center py-16 text-slate-500">
+                                <td colSpan={8} className="text-center py-16 text-slate-500">
                                   ไม่มีข้อมูลแฝงในชีตเลย ติ๊ก "โหลดข้อมูลจำลอง" เมนูด้านบนเพื่อเริ่มต้น
                                 </td>
                               </tr>
@@ -1091,6 +1125,16 @@ export default function App() {
                                       value={rec.province}
                                       onChange={(e) => handleEditRecordField(rec.id, 'province', e.target.value)}
                                       className="w-full bg-transparent border border-transparent hover:border-slate-800 focus:bg-slate-950 focus:border-blue-500 rounded px-1.5 py-0.5 text-xs text-yellow-500 font-medium focus:outline-none"
+                                    />
+                                  </td>
+
+                                  {/* Truck */}
+                                  <td className="p-1 border-l border-slate-900">
+                                    <input
+                                      type="text"
+                                      value={rec.truck}
+                                      onChange={(e) => handleEditRecordField(rec.id, 'truck', e.target.value)}
+                                      className="w-full bg-transparent border border-transparent hover:border-slate-800 focus:bg-slate-950 focus:border-sky-500 rounded px-1.5 py-0.5 text-xs text-sky-300 font-mono focus:outline-none"
                                     />
                                   </td>
 

@@ -11,6 +11,7 @@ export interface RawRecord {
   pCode: string;
   pName: string;
   qty: number;
+  truck: string; // ทะเบียนรถ
 }
 
 export interface ColumnMapping {
@@ -20,6 +21,7 @@ export interface ColumnMapping {
   pCode: string;    // e.g. "J"
   pName: string;    // e.g. "K"
   qty: string;      // e.g. "L"
+  truck: string;    // e.g. "Q" (ทะเบียนรถ)
 }
 
 export interface PresetFilter {

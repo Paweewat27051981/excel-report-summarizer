@@ -48,6 +48,7 @@ export async function parseUploadedExcel(
         const pCodeIndex = columnLetterToIndex(mapping.pCode);
         const pNameIndex = columnLetterToIndex(mapping.pName);
         const qtyIndex = columnLetterToIndex(mapping.qty);
+        const truckIndex = columnLetterToIndex(mapping.truck);
 
         const records: RawRecord[] = [];
         const provincesFound = new Set<string>();
@@ -83,6 +84,9 @@ export async function parseUploadedExcel(
             if (isNaN(qty)) qty = 0;
           }
 
+          const truckVal = row[truckIndex];
+          const truck = truckVal !== undefined ? String(truckVal).trim() : "";
+
           // Generate a safe unique ID
           const id = `row-${i}-${Date.now()}`;
 
@@ -93,7 +97,8 @@ export async function parseUploadedExcel(
             bill,
             pCode,
             pName,
-            qty
+            qty,
+            truck
           });
         }
 
@@ -301,8 +306,8 @@ export async function generateFilteredReport(
 
     // Column 6 Provincial formula: =F10+F15+F22 (summing the individual store rows)
     const provFormula = storeSubtotalRows.length > 0
-      ? "=" + storeSubtotalRows.map(r => `F${r}`).join("+")
-      : "=0";
+      ? storeSubtotalRows.map(r => `F${r}`).join("+")
+      : "0";
 
     const provCell = ws.getCell(`F${currentRowNum}`);
     provCell.value = { formula: provFormula };
@@ -337,8 +342,8 @@ export async function generateFilteredReport(
   }
 
   const grandFormula = provTotalRows.length > 0
-    ? "=" + provTotalRows.map(r => `F${r}`).join("+")
-    : "=0";
+    ? provTotalRows.map(r => `F${r}`).join("+")
+    : "0";
 
   const totalCell = ws.getCell(`F${currentRowNum}`);
   totalCell.value = { formula: grandFormula };
@@ -355,6 +360,167 @@ export async function generateFilteredReport(
     ws.getColumn(idx + 1).width = w;
   });
 
+  // ============================================================
+  // SHEET 2: "สรุปยอดตามทะเบียนรถ" (group by truck registration)
+  // Mirrors the Python script: เน้นทะเบียนรถเป็นหลัก, รวมยอดต่อคันรถ
+  // ============================================================
+  const wsTruck = wb.addWorksheet("สรุปยอดตามทะเบียนรถ", {
+    views: [{ showGridLines: true }]
+  });
+
+  // Sort: Truck -> Province -> Store -> Bill (records with no truck go last as "(ไม่ระบุทะเบียนรถ)")
+  const truckData = [...filteredData].sort((a, b) => {
+    const ta = a.truck.trim();
+    const tb = b.truck.trim();
+    if (ta !== tb) {
+      if (!ta) return 1;   // empty truck sinks to bottom
+      if (!tb) return -1;
+      return ta.localeCompare(tb, 'th');
+    }
+    if (a.province !== b.province) return a.province.localeCompare(b.province, 'th');
+    if (a.store !== b.store) return a.store.localeCompare(b.store, 'th');
+    return a.bill.localeCompare(b.bill, 'th');
+  });
+
+  // Truck-specific styling (light blue subtotal #EAF2F8, navy underline)
+  const fillTruckSub: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF2F8" } };
+  const truckSubBorder: Partial<ExcelJS.Borders> = {
+    top: { style: "thin", color: { argb: "FFAAAAAA" } },
+    bottom: { style: "thin", color: { argb: "FF1B365D" } }
+  };
+
+  // Title - row 1
+  wsTruck.getCell("A1").value = `รายงานสรุปการจัดส่งสินค้า เน้นทะเบียนรถเป็นหลัก (${selectedProvinces.join(" & ")})`;
+  wsTruck.getCell("A1").font = fontTitle;
+  wsTruck.getRow(1).height = 30;
+
+  // Header table - row 3 (truck first)
+  const truckHeaders = ["ทะเบียนรถ", "จังหวัด", "ร้านค้า", "เลขที่บิล", "รหัสสินค้า", "สินค้า", "จำนวน(หีบ)"];
+  const truckHeaderRow = wsTruck.getRow(3);
+  truckHeaderRow.height = 25;
+  truckHeaders.forEach((header, colIdx) => {
+    const cell = truckHeaderRow.getCell(colIdx + 1);
+    cell.value = header;
+    cell.font = fontHeader;
+    cell.fill = fillHeader;
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    cell.border = thinBorder;
+  });
+
+  let truckRowNum = 4;
+  const truckTotalRows: number[] = [];
+  let tIdx = 0;
+  const truckTotalLen = truckData.length;
+
+  // Loop trucks sequentially
+  while (tIdx < truckTotalLen) {
+    const currentTruck = truckData[tIdx].truck.trim();
+    const truckLabel = currentTruck || "(ไม่ระบุทะเบียนรถ)";
+    const startRow = truckRowNum;
+    let zebraFlag = false;
+
+    while (tIdx < truckTotalLen && truckData[tIdx].truck.trim() === currentTruck) {
+      const item = truckData[tIdx];
+      const itemRow = wsTruck.getRow(truckRowNum);
+      itemRow.height = 20;
+
+      // Column order: truck, province, store, bill, pCode, pName, qty
+      const rowValues = [truckLabel, item.province, item.store, item.bill, item.pCode, item.pName, item.qty];
+
+      rowValues.forEach((val, colIdx) => {
+        const cell = itemRow.getCell(colIdx + 1);
+        cell.value = val;
+        cell.font = fontBody;
+        cell.border = thinBorder;
+
+        // cols 1,2,3,6 left | 4,5 center | 7 right
+        if (colIdx === 0 || colIdx === 1 || colIdx === 2 || colIdx === 5) {
+          cell.alignment = { horizontal: "left", vertical: "middle" };
+        } else if (colIdx === 3 || colIdx === 4) {
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+        } else if (colIdx === 6) {
+          cell.alignment = { horizontal: "right", vertical: "middle" };
+          cell.numFmt = "#,##0";
+        }
+
+        if (zebraFlag) {
+          cell.fill = fillZebra;
+        }
+      });
+
+      truckRowNum++;
+      zebraFlag = !zebraFlag;
+      tIdx++;
+    }
+
+    const endRow = truckRowNum - 1;
+
+    // Truck subtotal row - merge columns 1-6 (A to F)
+    wsTruck.mergeCells(truckRowNum, 1, truckRowNum, 6);
+    const subLabelCell = wsTruck.getCell(`A${truckRowNum}`);
+    subLabelCell.value = `รวมยอดรถทะเบียน - ${truckLabel}`;
+    subLabelCell.font = fontSubtotal;
+    subLabelCell.alignment = { horizontal: "left", vertical: "middle" };
+
+    for (let c = 1; c <= 6; c++) {
+      const cell = wsTruck.getCell(truckRowNum, c);
+      cell.fill = fillTruckSub;
+      cell.border = truckSubBorder;
+      if (c > 1) {
+        cell.font = fontSubtotal;
+      }
+    }
+
+    // Column 7 (G): sum of qty for this truck
+    const subCell = wsTruck.getCell(`G${truckRowNum}`);
+    subCell.value = { formula: `SUM(G${startRow}:G${endRow})` };
+    subCell.font = fontSubtotal;
+    subCell.alignment = { horizontal: "right", vertical: "middle" };
+    subCell.numFmt = "#,##0";
+    subCell.fill = fillTruckSub;
+    subCell.border = truckSubBorder;
+
+    truckTotalRows.push(truckRowNum);
+    wsTruck.getRow(truckRowNum).height = 20;
+    truckRowNum += 2; // blank spacer row between trucks
+  }
+
+  // Grand Total Row (sum of all truck subtotals)
+  truckRowNum--;
+  wsTruck.mergeCells(truckRowNum, 1, truckRowNum, 6);
+  const truckGrandLabel = wsTruck.getCell(`A${truckRowNum}`);
+  truckGrandLabel.value = `รวมทั้งสิ้นสุทธิ (${selectedProvinces.join(" & ")})`;
+  truckGrandLabel.font = fontTotal;
+  truckGrandLabel.alignment = { horizontal: "left", vertical: "middle" };
+
+  for (let c = 1; c <= 6; c++) {
+    const cell = wsTruck.getCell(truckRowNum, c);
+    cell.fill = fillTotal;
+    cell.border = totalBorder;
+    if (c > 1) {
+      cell.font = fontTotal;
+    }
+  }
+
+  const truckGrandFormula = truckTotalRows.length > 0
+    ? truckTotalRows.map(r => `G${r}`).join("+")
+    : "0";
+
+  const truckTotalCell = wsTruck.getCell(`G${truckRowNum}`);
+  truckTotalCell.value = { formula: truckGrandFormula };
+  truckTotalCell.font = fontTotal;
+  truckTotalCell.alignment = { horizontal: "right", vertical: "middle" };
+  truckTotalCell.numFmt = "#,##0";
+  truckTotalCell.fill = fillTotal;
+  truckTotalCell.border = totalBorder;
+  wsTruck.getRow(truckRowNum).height = 26;
+
+  // Column widths (truck first)
+  const truckWidths = [18, 14, 45, 16, 16, 45, 14];
+  truckWidths.forEach((w, idx) => {
+    wsTruck.getColumn(idx + 1).width = w;
+  });
+
   // Write and Save
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
@@ -364,6 +530,12 @@ export async function generateFilteredReport(
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = outputFileName;
+  // Anchor must be in the DOM for Chrome to honor the `download` attribute,
+  // otherwise it falls back to the blob UUID as the filename (no .xlsx).
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
   anchor.click();
-  window.URL.revokeObjectURL(url);
+  document.body.removeChild(anchor);
+  // Delay revoke so the download isn't interrupted before it starts.
+  setTimeout(() => window.URL.revokeObjectURL(url), 1000);
 }
