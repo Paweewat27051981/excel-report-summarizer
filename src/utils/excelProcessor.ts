@@ -361,14 +361,15 @@ export async function generateFilteredReport(
   });
 
   // ============================================================
-  // SHEET 2: "สรุปยอดตามทะเบียนรถ" (group by truck registration)
-  // Mirrors the Python script: เน้นทะเบียนรถเป็นหลัก, รวมยอดต่อคันรถ
+  // SHEET 2: "สรุปยอดตามทะเบียนรถ" — เน้นทะเบียนรถและร้านค้า
+  // Group by Truck -> Store, with: store subtotal -> truck total -> grand total
+  // Column order: ทะเบียนรถ | ร้านค้า | จังหวัด | เลขที่บิล | รหัสสินค้า | สินค้า | จำนวน(หีบ)
   // ============================================================
   const wsTruck = wb.addWorksheet("สรุปยอดตามทะเบียนรถ", {
     views: [{ showGridLines: true }]
   });
 
-  // Sort: Truck -> Province -> Store -> Bill (records with no truck go last as "(ไม่ระบุทะเบียนรถ)")
+  // Sort: Truck -> Store -> Province -> Bill (no-truck rows go last as "(ไม่ระบุทะเบียนรถ)")
   const truckData = [...filteredData].sort((a, b) => {
     const ta = a.truck.trim();
     const tb = b.truck.trim();
@@ -377,25 +378,18 @@ export async function generateFilteredReport(
       if (!tb) return -1;
       return ta.localeCompare(tb, 'th');
     }
-    if (a.province !== b.province) return a.province.localeCompare(b.province, 'th');
     if (a.store !== b.store) return a.store.localeCompare(b.store, 'th');
+    if (a.province !== b.province) return a.province.localeCompare(b.province, 'th');
     return a.bill.localeCompare(b.bill, 'th');
   });
 
-  // Truck-specific styling (light blue subtotal #EAF2F8, navy underline)
-  const fillTruckSub: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEAF2F8" } };
-  const truckSubBorder: Partial<ExcelJS.Borders> = {
-    top: { style: "thin", color: { argb: "FFAAAAAA" } },
-    bottom: { style: "thin", color: { argb: "FF1B365D" } }
-  };
-
   // Title - row 1
-  wsTruck.getCell("A1").value = `รายงานสรุปการจัดส่งสินค้า เน้นทะเบียนรถเป็นหลัก (${selectedProvinces.join(" & ")})`;
+  wsTruck.getCell("A1").value = `รายงานสรุปการจัดส่งสินค้า เน้นทะเบียนรถและร้านค้า (${selectedProvinces.join(" & ")})`;
   wsTruck.getCell("A1").font = fontTitle;
   wsTruck.getRow(1).height = 30;
 
-  // Header table - row 3 (truck first)
-  const truckHeaders = ["ทะเบียนรถ", "จังหวัด", "ร้านค้า", "เลขที่บิล", "รหัสสินค้า", "สินค้า", "จำนวน(หีบ)"];
+  // Header table - row 3 (truck first, then store, then province)
+  const truckHeaders = ["ทะเบียนรถ", "ร้านค้า", "จังหวัด", "เลขที่บิล", "รหัสสินค้า", "สินค้า", "จำนวน(หีบ)"];
   const truckHeaderRow = wsTruck.getRow(3);
   truckHeaderRow.height = 25;
   truckHeaders.forEach((header, colIdx) => {
@@ -416,76 +410,118 @@ export async function generateFilteredReport(
   while (tIdx < truckTotalLen) {
     const currentTruck = truckData[tIdx].truck.trim();
     const truckLabel = currentTruck || "(ไม่ระบุทะเบียนรถ)";
-    const startRow = truckRowNum;
-    let zebraFlag = false;
+    const storeSubtotalRows: number[] = [];
 
+    // Loop stores within this truck
     while (tIdx < truckTotalLen && truckData[tIdx].truck.trim() === currentTruck) {
-      const item = truckData[tIdx];
-      const itemRow = wsTruck.getRow(truckRowNum);
-      itemRow.height = 20;
+      const currentStore = truckData[tIdx].store;
+      const startRow = truckRowNum;
+      let zebraFlag = false;
 
-      // Column order: truck, province, store, bill, pCode, pName, qty
-      const rowValues = [truckLabel, item.province, item.store, item.bill, item.pCode, item.pName, item.qty];
+      while (
+        tIdx < truckTotalLen &&
+        truckData[tIdx].truck.trim() === currentTruck &&
+        truckData[tIdx].store === currentStore
+      ) {
+        const item = truckData[tIdx];
+        const itemRow = wsTruck.getRow(truckRowNum);
+        itemRow.height = 20;
 
-      rowValues.forEach((val, colIdx) => {
-        const cell = itemRow.getCell(colIdx + 1);
-        cell.value = val;
-        cell.font = fontBody;
-        cell.border = thinBorder;
+        // Column order: truck, store, province, bill, pCode, pName, qty
+        const rowValues = [truckLabel, item.store, item.province, item.bill, item.pCode, item.pName, item.qty];
 
-        // cols 1,2,3,6 left | 4,5 center | 7 right
-        if (colIdx === 0 || colIdx === 1 || colIdx === 2 || colIdx === 5) {
-          cell.alignment = { horizontal: "left", vertical: "middle" };
-        } else if (colIdx === 3 || colIdx === 4) {
-          cell.alignment = { horizontal: "center", vertical: "middle" };
-        } else if (colIdx === 6) {
-          cell.alignment = { horizontal: "right", vertical: "middle" };
-          cell.numFmt = "#,##0";
+        rowValues.forEach((val, colIdx) => {
+          const cell = itemRow.getCell(colIdx + 1);
+          cell.value = val;
+          cell.font = fontBody;
+          cell.border = thinBorder;
+
+          // cols 1,2,6 left | 3,4,5 center | 7 right
+          if (colIdx === 0 || colIdx === 1 || colIdx === 5) {
+            cell.alignment = { horizontal: "left", vertical: "middle" };
+          } else if (colIdx === 2 || colIdx === 3 || colIdx === 4) {
+            cell.alignment = { horizontal: "center", vertical: "middle" };
+          } else if (colIdx === 6) {
+            cell.alignment = { horizontal: "right", vertical: "middle" };
+            cell.numFmt = "#,##0";
+          }
+
+          if (zebraFlag) {
+            cell.fill = fillZebra;
+          }
+        });
+
+        truckRowNum++;
+        zebraFlag = !zebraFlag;
+        tIdx++;
+      }
+
+      const endRow = truckRowNum - 1;
+
+      // Store subtotal row - merge columns 1-6 (A to F)
+      wsTruck.mergeCells(truckRowNum, 1, truckRowNum, 6);
+      const subLabelCell = wsTruck.getCell(`A${truckRowNum}`);
+      subLabelCell.value = `รวมย่อยร้าน - ${currentStore}`;
+      subLabelCell.font = fontSubtotal;
+      subLabelCell.alignment = { horizontal: "left", vertical: "middle" };
+
+      for (let c = 1; c <= 6; c++) {
+        const cell = wsTruck.getCell(truckRowNum, c);
+        cell.fill = fillSubtotal;
+        cell.border = subtotalBorder;
+        if (c > 1) {
+          cell.font = fontSubtotal;
         }
+      }
 
-        if (zebraFlag) {
-          cell.fill = fillZebra;
-        }
-      });
+      // Column 7 (G): sum of qty for this store
+      const subCell = wsTruck.getCell(`G${truckRowNum}`);
+      subCell.value = { formula: `SUM(G${startRow}:G${endRow})` };
+      subCell.font = fontSubtotal;
+      subCell.alignment = { horizontal: "right", vertical: "middle" };
+      subCell.numFmt = "#,##0";
+      subCell.fill = fillSubtotal;
+      subCell.border = subtotalBorder;
 
+      storeSubtotalRows.push(truckRowNum);
+      wsTruck.getRow(truckRowNum).height = 20;
       truckRowNum++;
-      zebraFlag = !zebraFlag;
-      tIdx++;
     }
 
-    const endRow = truckRowNum - 1;
-
-    // Truck subtotal row - merge columns 1-6 (A to F)
+    // Truck total row - merge columns 1-6 (A to F)
     wsTruck.mergeCells(truckRowNum, 1, truckRowNum, 6);
-    const subLabelCell = wsTruck.getCell(`A${truckRowNum}`);
-    subLabelCell.value = `รวมยอดรถทะเบียน - ${truckLabel}`;
-    subLabelCell.font = fontSubtotal;
-    subLabelCell.alignment = { horizontal: "left", vertical: "middle" };
+    const truckLabelCell = wsTruck.getCell(`A${truckRowNum}`);
+    truckLabelCell.value = `รวมยอดรถทะเบียน - ${truckLabel}`;
+    truckLabelCell.font = fontProvTotal;
+    truckLabelCell.alignment = { horizontal: "left", vertical: "middle" };
 
     for (let c = 1; c <= 6; c++) {
       const cell = wsTruck.getCell(truckRowNum, c);
-      cell.fill = fillTruckSub;
-      cell.border = truckSubBorder;
+      cell.fill = fillProvTotal;
+      cell.border = subtotalBorder;
       if (c > 1) {
-        cell.font = fontSubtotal;
+        cell.font = fontProvTotal;
       }
     }
 
-    // Column 7 (G): sum of qty for this truck
-    const subCell = wsTruck.getCell(`G${truckRowNum}`);
-    subCell.value = { formula: `SUM(G${startRow}:G${endRow})` };
-    subCell.font = fontSubtotal;
-    subCell.alignment = { horizontal: "right", vertical: "middle" };
-    subCell.numFmt = "#,##0";
-    subCell.fill = fillTruckSub;
-    subCell.border = truckSubBorder;
+    // Column 7 (G): sum of the store subtotal rows for this truck
+    const truckFormula = storeSubtotalRows.length > 0
+      ? storeSubtotalRows.map(r => `G${r}`).join("+")
+      : "0";
+    const truckCell = wsTruck.getCell(`G${truckRowNum}`);
+    truckCell.value = { formula: truckFormula };
+    truckCell.font = fontProvTotal;
+    truckCell.alignment = { horizontal: "right", vertical: "middle" };
+    truckCell.numFmt = "#,##0";
+    truckCell.fill = fillProvTotal;
+    truckCell.border = subtotalBorder;
 
     truckTotalRows.push(truckRowNum);
-    wsTruck.getRow(truckRowNum).height = 20;
+    wsTruck.getRow(truckRowNum).height = 22;
     truckRowNum += 2; // blank spacer row between trucks
   }
 
-  // Grand Total Row (sum of all truck subtotals)
+  // Grand Total Row (sum of all truck totals)
   truckRowNum--;
   wsTruck.mergeCells(truckRowNum, 1, truckRowNum, 6);
   const truckGrandLabel = wsTruck.getCell(`A${truckRowNum}`);
@@ -515,8 +551,8 @@ export async function generateFilteredReport(
   truckTotalCell.border = totalBorder;
   wsTruck.getRow(truckRowNum).height = 26;
 
-  // Column widths (truck first)
-  const truckWidths = [18, 14, 45, 16, 16, 45, 14];
+  // Column widths: truck | store | province | bill | code | name | qty
+  const truckWidths = [18, 45, 14, 16, 16, 45, 14];
   truckWidths.forEach((w, idx) => {
     wsTruck.getColumn(idx + 1).width = w;
   });
