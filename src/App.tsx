@@ -1295,16 +1295,6 @@ export default function App() {
 
           </div>
 
-          {/* PYTHON CONTEXT BRIEF TO BUILD CONFIDENCE */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm flex flex-col gap-3">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <CheckCircle className="w-4 h-4 text-emerald-500" />
-              การรับประกันคุณภาพรายงานด้านความงามเลย์เอาต์ (Visual Guarantee)
-            </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              สคริปต์ส่งออก Excel รันแบบ client-side ผ่านเฟรมเวิร์ก <strong>ExcelJS</strong> ด้วยโค้ดที่ถอดแบบสัดส่วน, ฟอนต์สไตล์ <code className="text-[10px] bg-slate-100 text-[#1B365D] px-1 py-0.5 rounded font-mono">Cordia New</code>, และรหัสค่าสีน้ำเงิน-เทาสุภาพ (Solid Navy headers #1B365D, Light Gray Subtotal #F2F4F4, Cream Yellow State totals #FEF9E7) จากโครงสร้างโปรแกรมเดิมเพื่อรับประกันไฟล์รายงานที่ส่งมอบงานให้พี่ได้อย่างถูกต้องไม่มีค้างคาใจแน่นอนครับ!
-            </p>
-          </div>
 
         </section>
 
