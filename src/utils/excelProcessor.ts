@@ -35,7 +35,8 @@ export async function parseUploadedExcel(
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
+        // Force codepage 874 (Thai) to support legacy .xls and .csv files commonly exported from Thai systems
+        const workbook = XLSX.read(data, { type: 'array', codepage: 874 });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
