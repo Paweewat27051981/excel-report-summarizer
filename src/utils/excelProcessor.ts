@@ -22,6 +22,35 @@ export function columnLetterToIndex(letter: string): number {
 }
 
 /**
+ * Repair Thai text that was decoded with the wrong codepage.
+ *
+ * The npm build of SheetJS ships without codepage tables, so when it reads a
+ * legacy .xls / .csv whose text is TIS-620 (codepage 874), each byte is mapped
+ * 1:1 into the Latin-1 range (e.g. "ร้านค้า" becomes "ÃéÒ¹¤éÒ"). Because that
+ * mapping is lossless we can turn the characters back into their original bytes
+ * and re-decode them as windows-874 to recover the Thai text.
+ *
+ * Guarded so it only touches strings that are actually broken: text that already
+ * contains Thai characters, or plain ASCII, is returned unchanged, and a repair
+ * is accepted only if it produces real Thai characters.
+ */
+export function fixThaiText(value: string): string {
+  if (typeof value !== 'string' || value === '') return value;
+  // Already valid Thai -> leave alone
+  if (/[฀-๿]/.test(value)) return value;
+  // No Latin-1 high bytes -> plain ASCII, nothing to fix
+  if (!/[-ÿ]/.test(value)) return value;
+  try {
+    const bytes = Uint8Array.from(value, c => c.charCodeAt(0) & 0xFF);
+    const repaired = new TextDecoder('windows-874').decode(bytes);
+    // Only accept the repair if it actually yielded Thai characters
+    return /[฀-๿]/.test(repaired) ? repaired : value;
+  } catch {
+    return value;
+  }
+}
+
+/**
  * Parse an uploaded Excel file using SheetJS (xlsx)
  * and extract a list of raw records based on the column mapping and selected provinces.
  */
@@ -60,23 +89,23 @@ export async function parseUploadedExcel(
           if (!row || row.length === 0) continue;
 
           const provVal = row[pIndex];
-          const prov = provVal !== undefined ? String(provVal).trim() : "";
+          const prov = fixThaiText(provVal !== undefined ? String(provVal).trim() : "");
 
           if (prov) {
             provincesFound.add(prov);
           }
 
           const storeVal = row[sIndex];
-          const store = storeVal !== undefined ? String(storeVal).trim() : "";
+          const store = fixThaiText(storeVal !== undefined ? String(storeVal).trim() : "");
 
           const billVal = row[bIndex];
-          const bill = billVal !== undefined ? String(billVal).trim() : "";
+          const bill = fixThaiText(billVal !== undefined ? String(billVal).trim() : "");
 
           const pCodeVal = row[pCodeIndex];
-          const pCode = pCodeVal !== undefined ? String(pCodeVal).trim() : "";
+          const pCode = fixThaiText(pCodeVal !== undefined ? String(pCodeVal).trim() : "");
 
           const pNameVal = row[pNameIndex];
-          const pName = pNameVal !== undefined ? String(pNameVal).trim() : "";
+          const pName = fixThaiText(pNameVal !== undefined ? String(pNameVal).trim() : "");
 
           const rawQty = row[qtyIndex];
           let qty = 0;
@@ -86,7 +115,7 @@ export async function parseUploadedExcel(
           }
 
           const truckVal = row[truckIndex];
-          const truck = truckVal !== undefined ? String(truckVal).trim() : "";
+          const truck = fixThaiText(truckVal !== undefined ? String(truckVal).trim() : "");
 
           // Generate a safe unique ID
           const id = `row-${i}-${Date.now()}`;

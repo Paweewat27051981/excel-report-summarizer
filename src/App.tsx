@@ -627,12 +627,12 @@ export default function App() {
                 type="file"
                 ref={fileInputRef}
                 onChange={handleFileUpload}
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 className="hidden"
               />
               <FileSpreadsheet className="w-12 h-12 text-slate-400 group-hover:text-[#1B365D] group-hover:scale-105 transition-all mb-3" />
               <p className="text-sm font-semibold text-slate-700">ลากหรือคลิกเพื่ออัปโหลดไฟล์ Excel</p>
-              <p className="text-xs text-slate-400 mt-1">รองรับไฟล์ตระกูล .xlsx (ไฟล์สรุปรายจังหวัด)</p>
+              <p className="text-xs text-slate-400 mt-1">รองรับ .xlsx / .xls / .csv (รองรับภาษาไทย TIS-620 อัตโนมัติ)</p>
             </div>
 
             <div className="mt-4 bg-blue-50/50 rounded-lg p-3 text-xs text-slate-600 border border-blue-100">
