@@ -9,7 +9,9 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http';
 import { timingSafeEqual } from 'crypto';
-import { fetchG080Range } from '../../server/g080';
+// ⚠️ ต้องมี .js — package.json เป็น "type":"module" และ Vercel แปลงทีละไฟล์เป็น ESM
+//    ไม่มีนามสกุล = ERR_MODULE_NOT_FOUND → 500 FUNCTION_INVOCATION_FAILED (เกิดจริง 5 พ.ย.69)
+import { fetchG080Range } from '../../server/g080.js';
 
 const send = (res: ServerResponse, status: number, body: unknown) => {
   res.statusCode = status;
