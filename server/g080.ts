@@ -71,7 +71,7 @@ async function login(cfg: G080Config): Promise<string> {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ username: cfg.user, password: cfg.pass }),
     redirect: 'manual',
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(10000),   // login 10 + ดึง 1 วัน 45 < 60 วิ (Vercel maxDuration)
   });
   const m = (r.headers.get('set-cookie') || '').match(/PHPSESSID=[^;]+/);
   if (!m) throw new Error('เข้าระบบ G080 ไม่สำเร็จ (ชื่อผู้ใช้/รหัสผ่านอาจผิด หรือระบบเปลี่ยน)');
@@ -84,7 +84,8 @@ async function fetchDay(cfg: G080Config, cookie: string, iso: string): Promise<B
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookie },
     body: new URLSearchParams({ date_from: toDdmmyyyy(iso), runn: '', inv: '', report: '  รายงาน  ' }),
-    signal: AbortSignal.timeout(90000),
+    // 45 วิ — ต้องน้อยกว่า maxDuration 60 วิ ของ Vercel (vercel.json) จะได้ตอบ error เป็นข้อความไทย ไม่ใช่ 504 เปล่าๆ
+    signal: AbortSignal.timeout(45000),
   });
   if (!r.ok) throw new Error(`G080 ตอบ HTTP ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());
@@ -100,7 +101,7 @@ async function fetchDay(cfg: G080Config, cookie: string, iso: string): Promise<B
  */
 export async function fetchG080Range(cfg: G080Config, fromIso: string, toIso: string, maxDays = 31): Promise<G080Result> {
   if (!cfg.user || !cfg.pass) {
-    throw new Error('ยังไม่ได้ตั้งค่า G080_USER / G080_PASS ในไฟล์ .env.local');
+    throw new Error('ยังไม่ได้ตั้งค่า G080_USER / G080_PASS (เครื่องนี้: ไฟล์ .env.local · ออนไลน์: Vercel Environment Variables)');
   }
   const days = dateRange(fromIso, toIso);
   if (days.length > maxDays) throw new Error(`ช่วงวันยาวเกินไป (${days.length} วัน) — ดึงได้ไม่เกิน ${maxDays} วันต่อครั้ง`);

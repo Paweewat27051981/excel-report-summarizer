@@ -198,9 +198,13 @@ export default function App() {
     }
   };
 
-  // --- ดึงงานเบิกจาก G080 (สหพัฒน์) ผ่านตัวกลางใน vite.config.ts ---
+  // --- ดึงงานเบิกจาก G080 (สหพัฒน์) ---
+  //   เครื่องนี้: ตัวกลางใน vite.config.ts · ออนไลน์ (Vercel): api/g080/requisition.ts (ต้องมีรหัสทีม)
   const [g080From, setG080From] = useState<string>(todayIso);
   const [g080To, setG080To] = useState<string>(todayIso);
+  // รหัสทีม — เว็บออนไลน์เปิดสาธารณะ ต้องมีรหัสกันคนนอกดึงข้อมูลลูกค้า · จำไว้ในเครื่องนี้
+  const [accessCode, setAccessCode] = useState<string>(() => localStorage.getItem('g080AccessCode') || '');
+  const [needCode, setNeedCode] = useState<boolean>(false);
 
   const pullFromG080 = async () => {
     if (isProcessing) return;
@@ -208,12 +212,40 @@ export default function App() {
       setFeedback({ type: 'error', message: '❌ กรุณาเลือกช่วงวันเบิกให้ถูกต้อง (วันเริ่มต้องไม่เกินวันสิ้นสุด)' });
       return;
     }
+    // ไล่วันทีละวัน (คำตอบ 1 วัน ≈ 0.3–0.6MB — Vercel รับได้ไม่เกิน ~4.5MB และตัดงานที่นานเกินไป)
+    // ตรวจรูปแบบ + จำนวนวันก่อนวนลูป (ปีพิมพ์ผิดเช่น 0026 จะทำให้วนเป็นแสนรอบจนหน้าค้าง — Gemini P3)
+    const start = new Date(g080From + 'T00:00:00Z'), end = new Date(g080To + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(g080From) || !/^\d{4}-\d{2}-\d{2}$/.test(g080To) || isNaN(start.getTime()) || isNaN(end.getTime())) {
+      setFeedback({ type: 'error', message: '❌ กรุณาเลือกวันเบิกให้ครบทั้งสองช่อง' });
+      return;
+    }
+    const dayCount = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+    if (dayCount > 31) {
+      setFeedback({ type: 'error', message: `❌ ช่วงวันยาวเกินไป (${dayCount} วัน) — ดึงได้ไม่เกิน 31 วันต่อครั้ง` });
+      return;
+    }
+    const days: string[] = [];
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) days.push(d.toISOString().slice(0, 10));
     setIsProcessing(true);
-    setFeedback({ type: 'info', message: `กำลังดึงงานเบิกจาก G080 วันเบิก ${thaiDate(g080From)} – ${thaiDate(g080To)} โปรดรอสักครู่...` });
     try {
-      const res = await fetch(`/api/g080/requisition?from=${g080From}&to=${g080To}`);
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data) throw new Error(data?.error || `เชื่อมต่อตัวดึงข้อมูลไม่ได้ (HTTP ${res.status}) — ต้องเปิดโปรแกรมด้วย npm run dev บนเครื่องนี้`);
+      const allRows: unknown[][] = [];
+      const allDays: { date: string; empty: boolean; qty: number }[] = [];
+      for (const [k, day] of days.entries()) {
+        setFeedback({ type: 'info', message: `กำลังดึงงานเบิกจาก G080 วันเบิก ${thaiDate(day)} (${k + 1}/${days.length}) โปรดรอสักครู่...` });
+        const res = await fetch(`/api/g080/requisition?from=${day}&to=${day}`, {
+          headers: accessCode ? { 'x-access-code': accessCode } : {},
+        });
+        const data = await res.json().catch(() => null);
+        if (res.status === 401) {
+          setNeedCode(true);
+          throw new Error('กรุณากรอก "รหัสทีม" ให้ถูกต้องก่อนดึงข้อมูล (ขอรหัสจากผู้ดูแลระบบ)');
+        }
+        // ⚠️ วันใดพลาด = หยุดทั้งช่วง ไม่ใช้ข้อมูลครึ่งๆ กลางๆ (กันยอดหายเงียบ)
+        if (!res.ok || !data) throw new Error(`วันเบิก ${thaiDate(day)}: ` + (data?.error || `เชื่อมต่อตัวดึงข้อมูลไม่ได้ (HTTP ${res.status})`));
+        allRows.push(...(data.rows as unknown[][]));
+        allDays.push(...data.days);
+      }
+      const data = { rows: allRows, days: allDays, totalQty: allDays.reduce((a, d) => a + (Number(d.qty) || 0), 0) };
 
       // แถวจาก G080 อยู่ตำแหน่งคอลัมน์เดิมของไฟล์ → อ่านผ่าน Column Mapping เดียวกับการอัปโหลดไฟล์
       const idx = {
@@ -726,12 +758,19 @@ export default function App() {
                     className="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700" />
                 </label>
               </div>
+              {(needCode || accessCode) && (
+                <label className="block mt-2 text-[11px] text-slate-500">รหัสทีม (ขอจากผู้ดูแลระบบ · เครื่องนี้จะจำไว้)
+                  <input type="password" value={accessCode} autoComplete="off" disabled={isProcessing}
+                    onChange={e => { setAccessCode(e.target.value); localStorage.setItem('g080AccessCode', e.target.value); }}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700" />
+                </label>
+              )}
               <button onClick={pullFromG080} disabled={isProcessing}
                 className="mt-2 w-full text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
                 style={{ backgroundColor: NAVY }}>
                 <CloudDownload className="w-4 h-4" /> {isProcessing ? 'กำลังดึงข้อมูล...' : 'ดึงจาก G080'}
               </button>
-              <p className="text-[11px] text-slate-400 mt-1.5">ดึงได้ครั้งละไม่เกิน 31 วัน · ใช้ได้เมื่อเปิดโปรแกรมด้วย npm run dev บนเครื่องนี้</p>
+              <p className="text-[11px] text-slate-400 mt-1.5">ดึงได้ครั้งละไม่เกิน 31 วัน (ระบบดึงทีละวัน)</p>
             </div>
 
             <div className="mt-4 bg-blue-50/50 rounded-lg p-3 text-xs text-slate-600 border border-blue-100">
