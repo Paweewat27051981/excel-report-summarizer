@@ -19,11 +19,20 @@ import {
   FileDown,
   CheckCircle,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  CloudDownload
 } from 'lucide-react';
 
 import { RawRecord, ColumnMapping } from './types';
-import { parseUploadedExcel, generateFilteredReport } from './utils/excelProcessor';
+import { parseUploadedExcel, generateFilteredReport, columnLetterToIndex } from './utils/excelProcessor';
+
+/** วันนี้ตามเวลาเครื่อง (YYYY-MM-DD) — ไม่ใช้ toISOString เพราะเป็น UTC (ช่วงเช้ามืดจะได้วันก่อนหน้า) */
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/** YYYY-MM-DD → dd/mm/yyyy พ.ศ. สำหรับแสดงผล */
+const thaiDate = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${Number(y) + 543}`; };
 
 // Brand navy used across header / buttons / table headers
 const NAVY = "#1B365D";
@@ -186,6 +195,71 @@ export default function App() {
       setIsProcessing(false);
       // Reset input element
       if (event.target) event.target.value = '';
+    }
+  };
+
+  // --- ดึงงานเบิกจาก G080 (สหพัฒน์) ผ่านตัวกลางใน vite.config.ts ---
+  const [g080From, setG080From] = useState<string>(todayIso);
+  const [g080To, setG080To] = useState<string>(todayIso);
+
+  const pullFromG080 = async () => {
+    if (isProcessing) return;
+    if (!g080From || !g080To || g080From > g080To) {
+      setFeedback({ type: 'error', message: '❌ กรุณาเลือกช่วงวันเบิกให้ถูกต้อง (วันเริ่มต้องไม่เกินวันสิ้นสุด)' });
+      return;
+    }
+    setIsProcessing(true);
+    setFeedback({ type: 'info', message: `กำลังดึงงานเบิกจาก G080 วันเบิก ${thaiDate(g080From)} – ${thaiDate(g080To)} โปรดรอสักครู่...` });
+    try {
+      const res = await fetch(`/api/g080/requisition?from=${g080From}&to=${g080To}`);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) throw new Error(data?.error || `เชื่อมต่อตัวดึงข้อมูลไม่ได้ (HTTP ${res.status}) — ต้องเปิดโปรแกรมด้วย npm run dev บนเครื่องนี้`);
+
+      // แถวจาก G080 อยู่ตำแหน่งคอลัมน์เดิมของไฟล์ → อ่านผ่าน Column Mapping เดียวกับการอัปโหลดไฟล์
+      const idx = {
+        province: columnLetterToIndex(columnMapping.province),
+        store: columnLetterToIndex(columnMapping.store),
+        bill: columnLetterToIndex(columnMapping.bill),
+        pCode: columnLetterToIndex(columnMapping.pCode),
+        pName: columnLetterToIndex(columnMapping.pName),
+        qty: columnLetterToIndex(columnMapping.qty),
+        truck: columnLetterToIndex(columnMapping.truck),
+      };
+      const txt = (row: unknown[], i: number) => String(row[i] ?? '').trim();
+      const stamp = Date.now();
+      const fetched: RawRecord[] = (data.rows as unknown[][]).map((row, i) => {
+        const q = Number(row[idx.qty]);
+        return {
+          id: `g080-${i}-${stamp}`,
+          province: txt(row, idx.province),
+          store: txt(row, idx.store),
+          bill: txt(row, idx.bill),
+          pCode: txt(row, idx.pCode),
+          pName: txt(row, idx.pName),
+          qty: isNaN(q) ? 0 : q,
+          truck: txt(row, idx.truck),
+        };
+      });
+
+      const emptyDays = (data.days as { date: string; empty: boolean }[]).filter(d => d.empty).map(d => thaiDate(d.date));
+      if (fetched.length === 0) {
+        setFeedback({ type: 'error', message: `❌ G080 ไม่มีงานเบิกในวันเบิก ${thaiDate(g080From)} – ${thaiDate(g080To)}` });
+        return;
+      }
+      const foundProvs = Array.from(new Set(fetched.map(r => r.province).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'th'));
+      setRecords(fetched);
+      const defaultSelected = foundProvs.filter(p => ["พิษณุโลก", "สุโขทัย"].includes(p));
+      setSelectedProvinces(defaultSelected.length > 0 ? defaultSelected : foundProvs.slice(0, 3));
+      setFeedback({
+        type: 'success',
+        message: `✔️ ดึงจาก G080 สำเร็จ ${fetched.length.toLocaleString()} แถว · รวม ${Number(data.totalQty).toLocaleString()} หีบ (วันเบิก ${thaiDate(g080From)} – ${thaiDate(g080To)})`
+          + (emptyDays.length ? ` · วันที่ไม่มีงาน: ${emptyDays.join(', ')}` : '')
+          + ` · จังหวัดที่พบ: ${foundProvs.join(', ')}`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: '❌ ดึงจาก G080 ไม่สำเร็จ: ' + (err?.message || String(err)) });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -633,6 +707,31 @@ export default function App() {
               <FileSpreadsheet className="w-12 h-12 text-slate-400 group-hover:text-[#1B365D] group-hover:scale-105 transition-all mb-3" />
               <p className="text-sm font-semibold text-slate-700">ลากหรือคลิกเพื่ออัปโหลดไฟล์ Excel</p>
               <p className="text-xs text-slate-400 mt-1">รองรับ .xlsx / .xls / .csv (รองรับภาษาไทย TIS-620 อัตโนมัติ)</p>
+            </div>
+
+            {/* ดึงงานเบิกจาก G080 (trg080.sslog.co.th) โดยตรง แทนการ export ไฟล์เอง */}
+            <div className="mt-4 rounded-xl border border-slate-200 p-3">
+              <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1">
+                <CloudDownload className="w-4 h-4 text-[#1B365D]" /> หรือดึงจากระบบ G080 อัตโนมัติ (ตามวันเบิก)
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[11px] text-slate-500">ตั้งแต่วันเบิก
+                  <input type="date" value={g080From} max={todayIso()} disabled={isProcessing}
+                    onChange={e => { setG080From(e.target.value); if (e.target.value > g080To) setG080To(e.target.value); }}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700" />
+                </label>
+                <label className="text-[11px] text-slate-500">ถึงวันเบิก
+                  <input type="date" value={g080To} min={g080From} max={todayIso()} disabled={isProcessing}
+                    onChange={e => setG080To(e.target.value)}
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700" />
+                </label>
+              </div>
+              <button onClick={pullFromG080} disabled={isProcessing}
+                className="mt-2 w-full text-white text-xs font-semibold rounded-lg py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                style={{ backgroundColor: NAVY }}>
+                <CloudDownload className="w-4 h-4" /> {isProcessing ? 'กำลังดึงข้อมูล...' : 'ดึงจาก G080'}
+              </button>
+              <p className="text-[11px] text-slate-400 mt-1.5">ดึงได้ครั้งละไม่เกิน 31 วัน · ใช้ได้เมื่อเปิดโปรแกรมด้วย npm run dev บนเครื่องนี้</p>
             </div>
 
             <div className="mt-4 bg-blue-50/50 rounded-lg p-3 text-xs text-slate-600 border border-blue-100">
